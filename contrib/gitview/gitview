@@ -42,15 +42,15 @@ except ImportError:
 re_ident = re.compile('(author|committer) (?P<ident>.*) (?P<epoch>\d+) (?P<tz>[+-]\d{4})')
 
 def list_to_string(args, skip):
-	count = len(args)
-	i = skip
-	str_arg=" "
-	while (i < count ):
-		str_arg = str_arg + args[i]
-		str_arg = str_arg + " "
-		i = i+1
+    count = len(args)
+    i = skip
+    str_arg=" "
+    while (i < count ):
+        str_arg = str_arg + args[i]
+        str_arg = f"{str_arg} "
+        i = i+1
 
-	return str_arg
+    return str_arg
 
 def show_date(epoch, tz):
 	secs = float(epoch)
@@ -352,20 +352,23 @@ class Commit(object):
 				continue
 
 	def get_message(self, with_diff=0):
-		if (with_diff == 1):
-			message = self.diff_tree()
-		else:
-			fp = os.popen("git cat-file commit " + self.commit_sha1)
-			message = fp.read()
-			fp.close()
+	    if (with_diff == 1):
+	        message = self.diff_tree()
+	    else:
+	        fp = os.popen(f"git cat-file commit {self.commit_sha1}")
+	        message = fp.read()
+	        fp.close()
 
-		return message
+	    return message
 
 	def diff_tree(self):
-		fp = os.popen("git diff-tree --pretty --cc  -v -p --always " +  self.commit_sha1)
-		diff = fp.read()
-		fp.close()
-		return diff
+	    fp = os.popen(
+	        f"git diff-tree --pretty --cc  -v -p --always {self.commit_sha1}"
+	    )
+
+	    diff = fp.read()
+	    fp.close()
+	    return diff
 
 class AnnotateWindow(object):
 	"""Annotate window.
@@ -387,181 +390,184 @@ class AnnotateWindow(object):
 		self.window.set_default_size(width, height)
 
 	def add_file_data(self, filename, commit_sha1, line_num):
-		fp = os.popen("git cat-file blob " + commit_sha1 +":"+filename)
-		i = 1;
-		for line in fp.readlines():
-			line = string.rstrip(line)
-			self.model.append(None, ["HEAD", filename, line, i])
-			i = i+1
-		fp.close()
+	    fp = os.popen(f"git cat-file blob {commit_sha1}:{filename}")
+	    i = 1;
+	    for line in fp.readlines():
+	    	line = string.rstrip(line)
+	    	self.model.append(None, ["HEAD", filename, line, i])
+	    	i = i+1
+	    fp.close()
 
-		# now set the cursor position
-		self.treeview.set_cursor(line_num-1)
-		self.treeview.grab_focus()
+	    # now set the cursor position
+	    self.treeview.set_cursor(line_num-1)
+	    self.treeview.grab_focus()
 
 	def _treeview_cursor_cb(self, *args):
-		"""Callback for when the treeview cursor changes."""
-		(path, col) = self.treeview.get_cursor()
-		commit_sha1 = self.model[path][0]
-		commit_msg = ""
-		fp = os.popen("git cat-file commit " + commit_sha1)
-		for line in fp.readlines():
-			commit_msg =  commit_msg + line
-		fp.close()
+	    """Callback for when the treeview cursor changes."""
+	    (path, col) = self.treeview.get_cursor()
+	    commit_sha1 = self.model[path][0]
+	    commit_msg = ""
+	    fp = os.popen(f"git cat-file commit {commit_sha1}")
+	    for line in fp.readlines():
+	    	commit_msg =  commit_msg + line
+	    fp.close()
 
-		self.commit_buffer.set_text(commit_msg)
+	    self.commit_buffer.set_text(commit_msg)
 
 	def _treeview_row_activated(self, *args):
-		"""Callback for when the treeview row gets selected."""
-		(path, col) = self.treeview.get_cursor()
-		commit_sha1 = self.model[path][0]
-		filename    = self.model[path][1]
-		line_num    = self.model[path][3]
+	    """Callback for when the treeview row gets selected."""
+	    (path, col) = self.treeview.get_cursor()
+	    commit_sha1 = self.model[path][0]
+	    filename    = self.model[path][1]
+	    line_num    = self.model[path][3]
 
-		window = AnnotateWindow();
-		fp = os.popen("git rev-parse "+ commit_sha1 + "~1")
-		commit_sha1 = string.strip(fp.readline())
-		fp.close()
-		window.annotate(filename, commit_sha1, line_num)
+	    window = AnnotateWindow();
+	    fp = os.popen(f"git rev-parse {commit_sha1}~1")
+	    commit_sha1 = string.strip(fp.readline())
+	    fp.close()
+	    window.annotate(filename, commit_sha1, line_num)
 
 	def data_ready(self, source, condition):
-		while (1):
-			try :
-				# A simple readline doesn't work
-				# a readline bug ??
-				buffer = source.read(100)
+	    while 1:
+	        try :
+	        	# A simple readline doesn't work
+	        	# a readline bug ??
+	        	buffer = source.read(100)
 
-			except:
-				# resource temporary not available
-				return True
+	        except:
+	        	# resource temporary not available
+	        	return True
 
-			if (len(buffer) == 0):
-				gobject.source_remove(self.io_watch_tag)
-				source.close()
-				return False
+	        if (len(buffer) == 0):
+	        	gobject.source_remove(self.io_watch_tag)
+	        	source.close()
+	        	return False
 
-			if (self.prev_read != ""):
-				buffer = self.prev_read + buffer
-				self.prev_read = ""
+	        if (self.prev_read != ""):
+	        	buffer = self.prev_read + buffer
+	        	self.prev_read = ""
 
-			if (buffer[len(buffer) -1] != '\n'):
-				try:
-					newline_index = buffer.rindex("\n")
-				except ValueError:
-					newline_index = 0
+	        if (buffer[len(buffer) -1] != '\n'):
+	            try:
+	            	newline_index = buffer.rindex("\n")
+	            except ValueError:
+	            	newline_index = 0
 
-				self.prev_read = buffer[newline_index:(len(buffer))]
-				buffer = buffer[0:newline_index]
+	            self.prev_read = buffer[newline_index:]
+	            buffer = buffer[:newline_index]
 
-			for buff in buffer.split("\n"):
-				annotate_line = re.compile('^([0-9a-f]{40}) (.+) (.+) (.+)$')
-				m = annotate_line.match(buff)
-				if not m:
-					annotate_line = re.compile('^(filename) (.+)$')
-					m = annotate_line.match(buff)
-					if not m:
-						continue
-					filename = m.group(2)
-				else:
-					self.commit_sha1 = m.group(1)
-					self.source_line = int(m.group(2))
-					self.result_line = int(m.group(3))
-					self.count	    = int(m.group(4))
-					#set the details only when we have the file name
-					continue
+	        for buff in buffer.split("\n"):
+	            annotate_line = re.compile('^([0-9a-f]{40}) (.+) (.+) (.+)$')
+	            m = annotate_line.match(buff)
+	            if not m:
+	                annotate_line = re.compile('^(filename) (.+)$')
+	                m = annotate_line.match(buff)
+	                if not m:
+	                	continue
+	                filename = m[2]
+	            else:
+	                self.commit_sha1 = m[1]
+	                self.source_line = int(m[2])
+	                self.result_line = int(m[3])
+	                self.count = int(m[4])
+	                #set the details only when we have the file name
+	                continue
 
-				while (self.count > 0):
-					# set at result_line + count-1 the sha1 as commit_sha1
-					self.count = self.count - 1
-					iter = self.model.iter_nth_child(None, self.result_line + self.count-1)
-					self.model.set(iter, 0, self.commit_sha1, 1, filename, 3, self.source_line)
+	            while (self.count > 0):
+	            	# set at result_line + count-1 the sha1 as commit_sha1
+	            	self.count = self.count - 1
+	            	iter = self.model.iter_nth_child(None, self.result_line + self.count-1)
+	            	self.model.set(iter, 0, self.commit_sha1, 1, filename, 3, self.source_line)
 
 
 	def annotate(self, filename, commit_sha1, line_num):
-		# verify the commit_sha1 specified has this filename
+	    	# verify the commit_sha1 specified has this filename
 
-		fp = os.popen("git ls-tree "+ commit_sha1 + " -- " + filename)
-		line = string.strip(fp.readline())
-		if line == '':
-			# pop up the message the file is not there as a part of the commit
-			fp.close()
-			dialog = gtk.MessageDialog(parent=None, flags=0,
-					type=gtk.MESSAGE_WARNING, buttons=gtk.BUTTONS_CLOSE,
-					message_format=None)
-			dialog.set_markup("The file %s is not present in the parent commit %s" % (filename, commit_sha1))
-			dialog.run()
-			dialog.destroy()
-			return
+	    fp = os.popen(f"git ls-tree {commit_sha1} -- {filename}")
+	    line = string.strip(fp.readline())
+	    if line == '':
+	        # pop up the message the file is not there as a part of the commit
+	        fp.close()
+	        dialog = gtk.MessageDialog(parent=None, flags=0,
+	        		type=gtk.MESSAGE_WARNING, buttons=gtk.BUTTONS_CLOSE,
+	        		message_format=None)
+	        dialog.set_markup(
+	            f"The file {filename} is not present in the parent commit {commit_sha1}"
+	        )
 
-		fp.close()
+	        dialog.run()
+	        dialog.destroy()
+	        return
 
-		vpan = gtk.VPaned();
-		self.window.add(vpan);
-		vpan.show()
+	    fp.close()
 
-		scrollwin = gtk.ScrolledWindow()
-		scrollwin.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-		scrollwin.set_shadow_type(gtk.SHADOW_IN)
-		vpan.pack1(scrollwin, True, True);
-		scrollwin.show()
+	    vpan = gtk.VPaned();
+	    self.window.add(vpan);
+	    vpan.show()
 
-		self.model = gtk.TreeStore(str, str, str, int)
-		self.treeview = gtk.TreeView(self.model)
-		self.treeview.set_rules_hint(True)
-		self.treeview.set_search_column(0)
-		self.treeview.connect("cursor-changed", self._treeview_cursor_cb)
-		self.treeview.connect("row-activated", self._treeview_row_activated)
-		scrollwin.add(self.treeview)
-		self.treeview.show()
+	    scrollwin = gtk.ScrolledWindow()
+	    scrollwin.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+	    scrollwin.set_shadow_type(gtk.SHADOW_IN)
+	    vpan.pack1(scrollwin, True, True);
+	    scrollwin.show()
 
-		cell = gtk.CellRendererText()
-		cell.set_property("width-chars", 10)
-		cell.set_property("ellipsize", pango.ELLIPSIZE_END)
-		column = gtk.TreeViewColumn("Commit")
-		column.set_resizable(True)
-		column.pack_start(cell, expand=True)
-		column.add_attribute(cell, "text", 0)
-		self.treeview.append_column(column)
+	    self.model = gtk.TreeStore(str, str, str, int)
+	    self.treeview = gtk.TreeView(self.model)
+	    self.treeview.set_rules_hint(True)
+	    self.treeview.set_search_column(0)
+	    self.treeview.connect("cursor-changed", self._treeview_cursor_cb)
+	    self.treeview.connect("row-activated", self._treeview_row_activated)
+	    scrollwin.add(self.treeview)
+	    self.treeview.show()
 
-		cell = gtk.CellRendererText()
-		cell.set_property("width-chars", 20)
-		cell.set_property("ellipsize", pango.ELLIPSIZE_END)
-		column = gtk.TreeViewColumn("File Name")
-		column.set_resizable(True)
-		column.pack_start(cell, expand=True)
-		column.add_attribute(cell, "text", 1)
-		self.treeview.append_column(column)
+	    cell = gtk.CellRendererText()
+	    cell.set_property("width-chars", 10)
+	    cell.set_property("ellipsize", pango.ELLIPSIZE_END)
+	    column = gtk.TreeViewColumn("Commit")
+	    column.set_resizable(True)
+	    column.pack_start(cell, expand=True)
+	    column.add_attribute(cell, "text", 0)
+	    self.treeview.append_column(column)
 
-		cell = gtk.CellRendererText()
-		cell.set_property("width-chars", 20)
-		cell.set_property("ellipsize", pango.ELLIPSIZE_END)
-		column = gtk.TreeViewColumn("Data")
-		column.set_resizable(True)
-		column.pack_start(cell, expand=True)
-		column.add_attribute(cell, "text", 2)
-		self.treeview.append_column(column)
+	    cell = gtk.CellRendererText()
+	    cell.set_property("width-chars", 20)
+	    cell.set_property("ellipsize", pango.ELLIPSIZE_END)
+	    column = gtk.TreeViewColumn("File Name")
+	    column.set_resizable(True)
+	    column.pack_start(cell, expand=True)
+	    column.add_attribute(cell, "text", 1)
+	    self.treeview.append_column(column)
 
-		# The commit message window
-		scrollwin = gtk.ScrolledWindow()
-		scrollwin.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-		scrollwin.set_shadow_type(gtk.SHADOW_IN)
-		vpan.pack2(scrollwin, True, True);
-		scrollwin.show()
+	    cell = gtk.CellRendererText()
+	    cell.set_property("width-chars", 20)
+	    cell.set_property("ellipsize", pango.ELLIPSIZE_END)
+	    column = gtk.TreeViewColumn("Data")
+	    column.set_resizable(True)
+	    column.pack_start(cell, expand=True)
+	    column.add_attribute(cell, "text", 2)
+	    self.treeview.append_column(column)
 
-		commit_text = gtk.TextView()
-		self.commit_buffer = gtk.TextBuffer()
-		commit_text.set_buffer(self.commit_buffer)
-		scrollwin.add(commit_text)
-		commit_text.show()
+	    # The commit message window
+	    scrollwin = gtk.ScrolledWindow()
+	    scrollwin.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+	    scrollwin.set_shadow_type(gtk.SHADOW_IN)
+	    vpan.pack2(scrollwin, True, True);
+	    scrollwin.show()
 
-		self.window.show()
+	    commit_text = gtk.TextView()
+	    self.commit_buffer = gtk.TextBuffer()
+	    commit_text.set_buffer(self.commit_buffer)
+	    scrollwin.add(commit_text)
+	    commit_text.show()
 
-		self.add_file_data(filename, commit_sha1, line_num)
+	    self.window.show()
 
-		fp = os.popen("git blame --incremental -C -C -- " + filename + " " + commit_sha1)
-		flags = fcntl.fcntl(fp.fileno(), fcntl.F_GETFL)
-		fcntl.fcntl(fp.fileno(), fcntl.F_SETFL, flags | os.O_NONBLOCK)
-		self.io_watch_tag = gobject.io_add_watch(fp, gobject.IO_IN, self.data_ready)
+	    self.add_file_data(filename, commit_sha1, line_num)
+
+	    fp = os.popen(f"git blame --incremental -C -C -- {filename} {commit_sha1}")
+	    flags = fcntl.fcntl(fp.fileno(), fcntl.F_GETFL)
+	    fcntl.fcntl(fp.fileno(), fcntl.F_SETFL, flags | os.O_NONBLOCK)
+	    self.io_watch_tag = gobject.io_add_watch(fp, gobject.IO_IN, self.data_ready)
 
 
 class DiffWindow(object):
@@ -640,74 +646,73 @@ class DiffWindow(object):
 		hpan.show()
 
 	def _treeview_clicked(self, *args):
-		"""Callback for when the treeview cursor changes."""
-		(path, col) = self.treeview.get_cursor()
-		specific_file = self.model[path][1]
-		commit_sha1 =  self.model[path][2]
-		if specific_file ==  None :
-			return
-		elif specific_file ==  "" :
-			specific_file =  None
+	    """Callback for when the treeview cursor changes."""
+	    (path, col) = self.treeview.get_cursor()
+	    specific_file = self.model[path][1]
+	    commit_sha1 =  self.model[path][2]
+	    if specific_file is None:
+	        return
+	    elif specific_file ==  "" :
+	    	specific_file =  None
 
-		window = AnnotateWindow();
-		window.annotate(specific_file, commit_sha1, 1)
+	    window = AnnotateWindow();
+	    window.annotate(specific_file, commit_sha1, 1)
 
 
 	def commit_files(self, commit_sha1, parent_sha1):
-		self.model.clear()
-		add  = self.model.append(None, [ "Added", None, None])
-		dele = self.model.append(None, [ "Deleted", None, None])
-		mod  = self.model.append(None, [ "Modified", None, None])
-		diff_tree = re.compile('^(:.{6}) (.{6}) (.{40}) (.{40}) (A|D|M)\s(.+)$')
-		fp = os.popen("git diff-tree -r --no-commit-id " + parent_sha1 + " " + commit_sha1)
-		while 1:
-			line = string.strip(fp.readline())
-			if line == '':
-				break
-			m = diff_tree.match(line)
-			if not m:
-				continue
+	    self.model.clear()
+	    add  = self.model.append(None, [ "Added", None, None])
+	    dele = self.model.append(None, [ "Deleted", None, None])
+	    mod  = self.model.append(None, [ "Modified", None, None])
+	    diff_tree = re.compile('^(:.{6}) (.{6}) (.{40}) (.{40}) (A|D|M)\s(.+)$')
+	    fp = os.popen(f"git diff-tree -r --no-commit-id {parent_sha1} {commit_sha1}")
+	    while 1:
+	        line = string.strip(fp.readline())
+	        if line == '':
+	        	break
+	        m = diff_tree.match(line)
+	        if not m:
+	        	continue
 
-			attr = m.group(5)
-			filename = m.group(6)
-			if attr == "A":
-				self.model.append(add,  [filename, filename, commit_sha1])
-			elif attr == "D":
-				self.model.append(dele, [filename, filename, commit_sha1])
-			elif attr == "M":
-				self.model.append(mod,  [filename, filename, commit_sha1])
-		fp.close()
+	        attr = m[5]
+	        filename = m[6]
+	        if attr == "A":
+	        	self.model.append(add,  [filename, filename, commit_sha1])
+	        elif attr == "D":
+	        	self.model.append(dele, [filename, filename, commit_sha1])
+	        elif attr == "M":
+	        	self.model.append(mod,  [filename, filename, commit_sha1])
+	    fp.close()
 
-		self.treeview.expand_all()
+	    self.treeview.expand_all()
 
 	def set_diff(self, commit_sha1, parent_sha1, encoding):
-		"""Set the differences showed by this window.
+	    """Set the differences showed by this window.
 		Compares the two trees and populates the window with the
 		differences.
 		"""
-		# Diff with the first commit or the last commit shows nothing
-		if (commit_sha1 == 0 or parent_sha1 == 0 ):
-			return
+	    # Diff with the first commit or the last commit shows nothing
+	    if (commit_sha1 == 0 or parent_sha1 == 0 ):
+	    	return
 
-		fp = os.popen("git diff-tree -p " + parent_sha1 + " " + commit_sha1)
-		self.buffer.set_text(unicode(fp.read(), encoding).encode('utf-8'))
-		fp.close()
-		self.commit_files(commit_sha1, parent_sha1)
-		self.window.show()
+	    fp = os.popen(f"git diff-tree -p {parent_sha1} {commit_sha1}")
+	    self.buffer.set_text(unicode(fp.read(), encoding).encode('utf-8'))
+	    fp.close()
+	    self.commit_files(commit_sha1, parent_sha1)
+	    self.window.show()
 
 	def save_menu_response(self, widget, string):
-		dialog = gtk.FileChooserDialog("Save..", None, gtk.FILE_CHOOSER_ACTION_SAVE,
-				(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
-					gtk.STOCK_SAVE, gtk.RESPONSE_OK))
-		dialog.set_default_response(gtk.RESPONSE_OK)
-		response = dialog.run()
-		if response == gtk.RESPONSE_OK:
-			patch_buffer = self.buffer.get_text(self.buffer.get_start_iter(),
-					self.buffer.get_end_iter())
-			fp = open(dialog.get_filename(), "w")
-			fp.write(patch_buffer)
-			fp.close()
-		dialog.destroy()
+	    dialog = gtk.FileChooserDialog("Save..", None, gtk.FILE_CHOOSER_ACTION_SAVE,
+	    		(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+	    			gtk.STOCK_SAVE, gtk.RESPONSE_OK))
+	    dialog.set_default_response(gtk.RESPONSE_OK)
+	    response = dialog.run()
+	    if response == gtk.RESPONSE_OK:
+	        patch_buffer = self.buffer.get_text(self.buffer.get_start_iter(),
+	        		self.buffer.get_end_iter())
+	        with open(dialog.get_filename(), "w") as fp:
+	            fp.write(patch_buffer)
+	    dialog.destroy()
 
 class GitView(object):
 	""" This is the main class
@@ -764,24 +769,24 @@ class GitView(object):
 		return True
 
 	def get_bt_sha1(self):
-		""" Update the bt_sha1 dictionary with the
+	    """ Update the bt_sha1 dictionary with the
 		respective sha1 details """
 
-		self.bt_sha1 = { }
-		ls_remote = re.compile('^(.{40})\trefs/([^^]+)(?:\\^(..))?$');
-		fp = os.popen('git ls-remote "${GIT_DIR-.git}"')
-		while 1:
-			line = string.strip(fp.readline())
-			if line == '':
-				break
-			m = ls_remote.match(line)
-			if not m:
-				continue
-			(sha1, name) = (m.group(1), m.group(2))
-			if not self.bt_sha1.has_key(sha1):
-				self.bt_sha1[sha1] = []
-			self.bt_sha1[sha1].append(name)
-		fp.close()
+	    self.bt_sha1 = { }
+	    ls_remote = re.compile('^(.{40})\trefs/([^^]+)(?:\\^(..))?$');
+	    fp = os.popen('git ls-remote "${GIT_DIR-.git}"')
+	    while 1:
+	        line = string.strip(fp.readline())
+	        if line == '':
+	        	break
+	        m = ls_remote.match(line)
+	        if not m:
+	        	continue
+	        (sha1, name) = m[1], m[2]
+	        if not self.bt_sha1.has_key(sha1):
+	        	self.bt_sha1[sha1] = []
+	        self.bt_sha1[sha1].append(name)
+	    fp.close()
 
 	def get_encoding(self):
 		fp = os.popen("git config --get i18n.commitencoding")
@@ -1120,62 +1125,58 @@ class GitView(object):
 		gtk.main()
 
 	def set_branch(self, args):
-		"""Fill in different windows with info from the reposiroty"""
-		fp = os.popen("git rev-parse --sq --default HEAD " + list_to_string(args, 1))
-		git_rev_list_cmd = fp.read()
-		fp.close()
-		fp = os.popen("git rev-list  --header --topo-order --parents " + git_rev_list_cmd)
-		self.update_window(fp)
+	    """Fill in different windows with info from the reposiroty"""
+	    fp = os.popen(f"git rev-parse --sq --default HEAD {list_to_string(args, 1)}")
+	    git_rev_list_cmd = fp.read()
+	    fp.close()
+	    fp = os.popen(
+	        f"git rev-list  --header --topo-order --parents {git_rev_list_cmd}"
+	    )
+
+	    self.update_window(fp)
 
 	def update_window(self, fp):
-		commit_lines = []
+	    self.model = gtk.ListStore(gobject.TYPE_PYOBJECT, gobject.TYPE_PYOBJECT,
+	    		gobject.TYPE_PYOBJECT, gobject.TYPE_PYOBJECT, str, str, str)
 
-		self.model = gtk.ListStore(gobject.TYPE_PYOBJECT, gobject.TYPE_PYOBJECT,
-				gobject.TYPE_PYOBJECT, gobject.TYPE_PYOBJECT, str, str, str)
+	    last_colour = 0
+	    last_nodepos = -1
+	    out_line = []
+	    self.index = {}
+	    self.colours = {}
+	    self.nodepos = {}
+	    self.incomplete_line = {}
+	    self.commits = []
+	    input_line = fp.readline()
+	    commit_lines = []
+	    while (input_line != ""):
+	    	# The commit header ends with '\0'
+	    	# This NULL is immediately followed by the sha1 of the
+	    	# next commit
+	    	if (input_line[0] != '\0'):
+	    		commit_lines.append(input_line)
+	    		input_line = fp.readline()
+	    		continue;
 
-		# used for cursor positioning
-		self.index = {}
+	    	commit = Commit(commit_lines)
+	    	if (commit != None ):
+	    		self.commits.append(commit)
 
-		self.colours = {}
-		self.nodepos = {}
-		self.incomplete_line = {}
-		self.commits = []
+	    	# Skip the '\0
+	    	commit_lines = []
+	    	commit_lines.append(input_line[1:])
+	    	input_line = fp.readline()
 
-		index = 0
-		last_colour = 0
-		last_nodepos = -1
-		out_line = []
-		input_line = fp.readline()
-		while (input_line != ""):
-			# The commit header ends with '\0'
-			# This NULL is immediately followed by the sha1 of the
-			# next commit
-			if (input_line[0] != '\0'):
-				commit_lines.append(input_line)
-				input_line = fp.readline()
-				continue;
+	    fp.close()
 
-			commit = Commit(commit_lines)
-			if (commit != None ):
-				self.commits.append(commit)
-
-			# Skip the '\0
-			commit_lines = []
-			commit_lines.append(input_line[1:])
-			input_line = fp.readline()
-
-		fp.close()
-
-		for commit in self.commits:
-			(out_line, last_colour, last_nodepos) = self.draw_graph(commit,
-										index, out_line,
-										last_colour,
-										last_nodepos)
-			self.index[commit.commit_sha1] = index
-			index += 1
-
-		self.treeview.set_model(self.model)
-		self.treeview.show()
+	    for index, commit in enumerate(self.commits):
+	        (out_line, last_colour, last_nodepos) = self.draw_graph(commit,
+	        							index, out_line,
+	        							last_colour,
+	        							last_nodepos)
+	        self.index[commit.commit_sha1] = index
+	    self.treeview.set_model(self.model)
+	    self.treeview.show()
 
 	def draw_graph(self, commit, index, out_line, last_colour, last_nodepos):
 		in_line=[]
@@ -1272,21 +1273,21 @@ class GitView(object):
 
 
 	def _go_clicked_cb(self, widget, revid):
-		"""Callback for when the go button for a parent is clicked."""
-		try:
-			self.treeview.set_cursor(self.index[revid])
-		except KeyError:
-			dialog = gtk.MessageDialog(parent=None, flags=0,
-					type=gtk.MESSAGE_WARNING, buttons=gtk.BUTTONS_CLOSE,
-					message_format=None)
-			dialog.set_markup("Revision <b>%s</b> not present in the list" % revid)
-			# revid == 0 is the parent of the first commit
-			if (revid != 0 ):
-				dialog.format_secondary_text("Try running gitview without any options")
-			dialog.run()
-			dialog.destroy()
+	    """Callback for when the go button for a parent is clicked."""
+	    try:
+	        self.treeview.set_cursor(self.index[revid])
+	    except KeyError:
+	        dialog = gtk.MessageDialog(parent=None, flags=0,
+	        		type=gtk.MESSAGE_WARNING, buttons=gtk.BUTTONS_CLOSE,
+	        		message_format=None)
+	        dialog.set_markup(f"Revision <b>{revid}</b> not present in the list")
+	        # revid == 0 is the parent of the first commit
+	        if (revid != 0 ):
+	        	dialog.format_secondary_text("Try running gitview without any options")
+	        dialog.run()
+	        dialog.destroy()
 
-		self.treeview.grab_focus()
+	    self.treeview.grab_focus()
 
 	def _show_clicked_cb(self, widget,  commit_sha1, parent_sha1, encoding):
 		"""Callback for when the show button for a parent is clicked."""
@@ -1297,9 +1298,8 @@ class GitView(object):
 without_diff = 0
 if __name__ == "__main__":
 
-	if (len(sys.argv) > 1 ):
-		if (sys.argv[1] == "--without-diff"):
-			without_diff = 1
+    if (len(sys.argv) > 1) and (sys.argv[1] == "--without-diff"):
+        without_diff = 1
 
-	view = GitView( without_diff != 1)
-	view.run(sys.argv[without_diff:])
+    view = GitView( without_diff != 1)
+    view.run(sys.argv[without_diff:])

@@ -60,11 +60,7 @@ to see if they would be useful in your situation:
 def _check_old_config_exists(old):
     """Check that at least one old configuration value is set."""
 
-    for name in OLD_NAMES:
-        if old.has_key(name):
-            return True
-
-    return False
+    return any(old.has_key(name) for name in OLD_NAMES)
 
 
 def _check_new_config_clear(new):
@@ -261,7 +257,7 @@ def main(args):
     (options, args) = parser.parse_args(args)
 
     if args:
-        parser.error('Unexpected arguments: %s' % (' '.join(args),))
+        parser.error(f"Unexpected arguments: {' '.join(args)}")
 
     migrate_config(strict=options.strict, retain=options.retain, overwrite=options.overwrite)
 

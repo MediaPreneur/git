@@ -45,6 +45,7 @@ See the accompanying README file for the complete documentation.
 
 """
 
+
 import sys
 import os
 import re
@@ -77,7 +78,7 @@ ZEROS = '0' * 40
 LOGBEGIN = '- Log -----------------------------------------------------------------\n'
 LOGEND = '-----------------------------------------------------------------------\n'
 
-ADDR_HEADERS = set(['from', 'to', 'cc', 'bcc', 'reply-to', 'sender'])
+ADDR_HEADERS = {'from', 'to', 'cc', 'bcc', 'reply-to', 'sender'}
 
 # It is assumed in many places that the encoding is uniformly UTF-8,
 # so changing these constants is unsupported.  But define them here
@@ -297,7 +298,7 @@ def choose_git_command():
             # do it.
             cmd = [GIT_EXECUTABLE, '-c', 'foo.bar=baz', '--version']
             read_output(cmd)
-            GIT_CMD = [GIT_EXECUTABLE, '-c', 'i18n.logoutputencoding=%s' % (ENCODING,)]
+            GIT_CMD = [GIT_EXECUTABLE, '-c', f'i18n.logoutputencoding={ENCODING}']
         except CommandError:
             GIT_CMD = [GIT_EXECUTABLE]
 
@@ -312,16 +313,12 @@ def read_git_output(args, input=None, keepends=False, **kw):
 
 
 def read_output(cmd, input=None, keepends=False, **kw):
-    if input:
-        stdin = subprocess.PIPE
-    else:
-        stdin = None
+    stdin = subprocess.PIPE if input else None
     p = subprocess.Popen(
         cmd, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw
         )
     (out, err) = p.communicate(input)
-    retcode = p.wait()
-    if retcode:
+    if retcode := p.wait():
         raise CommandError(cmd, retcode)
     if not keepends:
         out = out.rstrip('\n\r')
@@ -387,10 +384,14 @@ class Config(object):
 
     def get(self, name, default=None):
         try:
-            values = self._split(read_git_output(
-                    ['config', '--get', '--null', '%s.%s' % (self.section, name)],
-                    env=self.env, keepends=True,
-                    ))
+            values = self._split(
+                read_git_output(
+                    ['config', '--get', '--null', f'{self.section}.{name}'],
+                    env=self.env,
+                    keepends=True,
+                )
+            )
+
             assert len(values) == 1
             return values[0]
         except CommandError:
@@ -399,9 +400,10 @@ class Config(object):
     def get_bool(self, name, default=None):
         try:
             value = read_git_output(
-                ['config', '--get', '--bool', '%s.%s' % (self.section, name)],
+                ['config', '--get', '--bool', f'{self.section}.{name}'],
                 env=self.env,
-                )
+            )
+
         except CommandError:
             return default
         return value == 'true'
@@ -438,16 +440,12 @@ class Config(object):
         return ', '.join(line.strip() for line in lines)
 
     def set(self, name, value):
-        read_git_output(
-            ['config', '%s.%s' % (self.section, name), value],
-            env=self.env,
-            )
+        read_git_output(['config', f'{self.section}.{name}', value], env=self.env)
 
     def add(self, name, value):
         read_git_output(
-            ['config', '--add', '%s.%s' % (self.section, name), value],
-            env=self.env,
-            )
+            ['config', '--add', f'{self.section}.{name}', value], env=self.env
+        )
 
     def has_key(self, name):
         return self.get_all(name, default=None) is not None
@@ -535,9 +533,7 @@ class GitObject(object):
                 self.commit_sha1 = self.sha1
             elif self.type == 'tag':
                 try:
-                    self.commit_sha1 = read_git_output(
-                        ['rev-parse', '--verify', '%s^0' % (self.sha1,)]
-                        )
+                    self.commit_sha1 = read_git_output(['rev-parse', '--verify', f'{self.sha1}^0'])
                 except CommandError:
                     # Cannot deref tag to determine commit_sha1
                     self.commit_sha1 = None
@@ -692,20 +688,14 @@ class Change(object):
         **kwargs, to allow passing other keyword arguments in the
         future (e.g. passing extra values to generate_email_intro()"""
 
-        for line in self.generate_email_header(**extra_header_values):
-            yield line
+        yield from self.generate_email_header(**extra_header_values)
         yield '\n'
-        for line in self.generate_email_intro():
-            yield line
-
+        yield from self.generate_email_intro()
         body = self.generate_email_body(push)
         if body_filter is not None:
             body = body_filter(body)
-        for line in body:
-            yield line
-
-        for line in self.generate_email_footer():
-            yield line
+        yield from body
+        yield from self.generate_email_footer()
 
 
 class Revision(Change):
@@ -742,21 +732,18 @@ class Revision(Change):
         values['oneline'] = oneline
         values['author'] = self.author
 
-        reply_to = self.environment.get_reply_to_commit(self)
-        if reply_to:
+        if reply_to := self.environment.get_reply_to_commit(self):
             values['reply_to'] = reply_to
 
         return values
 
     def generate_email_header(self, **extra_values):
-        for line in self.expand_header_lines(
+        yield from self.expand_header_lines(
             REVISION_HEADER_TEMPLATE, **extra_values
-            ):
-            yield line
+        )
 
     def generate_email_intro(self):
-        for line in self.expand_lines(REVISION_INTRO_TEMPLATE):
-            yield line
+        yield from self.expand_lines(REVISION_INTRO_TEMPLATE)
 
     def generate_email_body(self, push):
         """Show this revision."""
@@ -796,14 +783,7 @@ class ReferenceChange(Change):
         new = GitObject(newrev)
         rev = new or old
 
-        # The revision type tells us what type the commit is, combined with
-        # the location of the ref we can decide between
-        #  - working branch
-        #  - tracking branch
-        #  - unannotated tag
-        #  - annotated tag
-        m = ReferenceChange.REF_RE.match(refname)
-        if m:
+        if m := ReferenceChange.REF_RE.match(refname):
             area = m.group('area')
             short_refname = m.group('shortname')
         else:
@@ -888,8 +868,7 @@ class ReferenceChange(Change):
         if self.new:
             values['newrev_type'] = self.new.type
 
-        reply_to = self.environment.get_reply_to_refchange(self)
-        if reply_to:
+        if reply_to := self.environment.get_reply_to_refchange(self):
             values['reply_to'] = reply_to
 
         return values
@@ -906,14 +885,12 @@ class ReferenceChange(Change):
         if 'subject' not in extra_values:
             extra_values['subject'] = self.get_subject()
 
-        for line in self.expand_header_lines(
+        yield from self.expand_header_lines(
             REFCHANGE_HEADER_TEMPLATE, **extra_values
-            ):
-            yield line
+        )
 
     def generate_email_intro(self):
-        for line in self.expand_lines(REFCHANGE_INTRO_TEMPLATE):
-            yield line
+        yield from self.expand_lines(REFCHANGE_INTRO_TEMPLATE)
 
     def generate_email_body(self, push):
         """Call the appropriate body-generation routine.
@@ -921,16 +898,13 @@ class ReferenceChange(Change):
         Call one of generate_create_summary() /
         generate_update_summary() / generate_delete_summary()."""
 
-        change_summary = {
-            'create' : self.generate_create_summary,
-            'delete' : self.generate_delete_summary,
-            'update' : self.generate_update_summary,
-            }[self.change_type](push)
-        for line in change_summary:
-            yield line
+        yield from {
+            'create': self.generate_create_summary,
+            'delete': self.generate_delete_summary,
+            'update': self.generate_update_summary,
+        }[self.change_type](push)
 
-        for line in self.generate_revision_change_summary(push):
-            yield line
+        yield from self.generate_revision_change_summary(push)
 
     def generate_email_footer(self):
         return self.expand_lines(FOOTER_TEMPLATE)
@@ -939,14 +913,10 @@ class ReferenceChange(Change):
         if self.showlog:
             yield '\n'
             yield 'Detailed log of new commits:\n\n'
-            for line in read_git_lines(
-                    ['log', '--no-walk']
-                    + self.logopts
-                    + new_commits_list
-                    + ['--'],
-                    keepends=True,
-                ):
-                yield line
+            yield from read_git_lines(
+                ['log', '--no-walk'] + self.logopts + new_commits_list + ['--'],
+                keepends=True,
+            )
 
     def generate_revision_change_summary(self, push):
         """Generate a summary of the revisions added/removed by this change."""
@@ -959,12 +929,10 @@ class ReferenceChange(Change):
             sha1s = list(push.get_new_commits(self))
             sha1s.reverse()
             tot = len(sha1s)
-            new_revisions = [
-                Revision(self, GitObject(sha1), num=i+1, tot=tot)
+            if new_revisions := [
+                Revision(self, GitObject(sha1), num=i + 1, tot=tot)
                 for (i, sha1) in enumerate(sha1s)
-                ]
-
-            if new_revisions:
+            ]:
                 yield self.expand('This %(refname_type)s includes the following new commits:\n')
                 yield '\n'
                 for r in new_revisions:
@@ -973,15 +941,14 @@ class ReferenceChange(Change):
                         BRIEF_SUMMARY_TEMPLATE, action='new', text=subject,
                         )
                 yield '\n'
-                for line in self.expand_lines(NEW_REVISIONS_TEMPLATE, tot=tot):
-                    yield line
-                for line in self.generate_revision_change_log([r.rev.sha1 for r in new_revisions]):
-                    yield line
-            else:
-                for line in self.expand_lines(NO_NEW_REVISIONS_TEMPLATE):
-                    yield line
+                yield from self.expand_lines(NEW_REVISIONS_TEMPLATE, tot=tot)
+                yield from self.generate_revision_change_log(
+                    [r.rev.sha1 for r in new_revisions]
+                )
 
-        elif self.new.commit_sha1 and self.old.commit_sha1:
+            else:
+                yield from self.expand_lines(NO_NEW_REVISIONS_TEMPLATE)
+        elif self.new.commit_sha1:
             # A reference was changed to point at a different commit.
             # List the revisions that were removed and/or added *from
             # that reference* by this reference change, along with a
@@ -992,22 +959,26 @@ class ReferenceChange(Change):
             # have already had notification emails; we want such
             # revisions in the summary even though we will not send
             # new notification emails for them.
-            adds = list(generate_summaries(
-                    '--topo-order', '--reverse', '%s..%s'
-                    % (self.old.commit_sha1, self.new.commit_sha1,)
-                    ))
+            adds = list(
+                generate_summaries(
+                    '--topo-order',
+                    '--reverse',
+                    f'{self.old.commit_sha1}..{self.new.commit_sha1}',
+                )
+            )
+
 
             # List of the revisions that were removed from the branch
             # by this update.  This will be empty except for
             # non-fast-forward updates.
-            discards = list(generate_summaries(
-                    '%s..%s' % (self.new.commit_sha1, self.old.commit_sha1,)
-                    ))
+            discards = list(
+                generate_summaries(
+                    f'{self.new.commit_sha1}..{self.old.commit_sha1}'
+                )
+            )
 
-            if adds:
-                new_commits_list = push.get_new_commits(self)
-            else:
-                new_commits_list = []
+
+            new_commits_list = push.get_new_commits(self) if adds else []
             new_commits = CommitSet(new_commits_list)
 
             if discards:
@@ -1017,41 +988,28 @@ class ReferenceChange(Change):
 
             if discards and adds:
                 for (sha1, subject) in discards:
-                    if sha1 in discarded_commits:
-                        action = 'discards'
-                    else:
-                        action = 'omits'
+                    action = 'discards' if sha1 in discarded_commits else 'omits'
                     yield self.expand(
                         BRIEF_SUMMARY_TEMPLATE, action=action,
                         rev_short=sha1, text=subject,
                         )
                 for (sha1, subject) in adds:
-                    if sha1 in new_commits:
-                        action = 'new'
-                    else:
-                        action = 'adds'
+                    action = 'new' if sha1 in new_commits else 'adds'
                     yield self.expand(
                         BRIEF_SUMMARY_TEMPLATE, action=action,
                         rev_short=sha1, text=subject,
                         )
                 yield '\n'
-                for line in self.expand_lines(NON_FF_TEMPLATE):
-                    yield line
-
+                yield from self.expand_lines(NON_FF_TEMPLATE)
             elif discards:
                 for (sha1, subject) in discards:
-                    if sha1 in discarded_commits:
-                        action = 'discards'
-                    else:
-                        action = 'omits'
+                    action = 'discards' if sha1 in discarded_commits else 'omits'
                     yield self.expand(
                         BRIEF_SUMMARY_TEMPLATE, action=action,
                         rev_short=sha1, text=subject,
                         )
                 yield '\n'
-                for line in self.expand_lines(REWIND_ONLY_TEMPLATE):
-                    yield line
-
+                yield from self.expand_lines(REWIND_ONLY_TEMPLATE)
             elif adds:
                 (sha1, subject) = self.old.get_summary()
                 yield self.expand(
@@ -1059,10 +1017,7 @@ class ReferenceChange(Change):
                     rev_short=sha1, text=subject,
                     )
                 for (sha1, subject) in adds:
-                    if sha1 in new_commits:
-                        action = 'new'
-                    else:
-                        action = 'adds'
+                    action = 'new' if sha1 in new_commits else 'adds'
                     yield self.expand(
                         BRIEF_SUMMARY_TEMPLATE, action=action,
                         rev_short=sha1, text=subject,
@@ -1071,14 +1026,10 @@ class ReferenceChange(Change):
             yield '\n'
 
             if new_commits:
-                for line in self.expand_lines(NEW_REVISIONS_TEMPLATE, tot=len(new_commits)):
-                    yield line
-                for line in self.generate_revision_change_log(new_commits_list):
-                    yield line
+                yield from self.expand_lines(NEW_REVISIONS_TEMPLATE, tot=len(new_commits))
+                yield from self.generate_revision_change_log(new_commits_list)
             else:
-                for line in self.expand_lines(NO_NEW_REVISIONS_TEMPLATE):
-                    yield line
-
+                yield from self.expand_lines(NO_NEW_REVISIONS_TEMPLATE)
             # The diffstat is shown from the old revision to the new
             # revision.  This is to show the truth of what happened in
             # this change.  There's no point showing the stat from the
@@ -1088,28 +1039,26 @@ class ReferenceChange(Change):
             # previous revisions in the case of non-fast-forward updates.
             yield '\n'
             yield 'Summary of changes:\n'
-            for line in read_git_lines(
-                ['diff-tree']
-                + self.diffopts
-                + ['%s..%s' % (self.old.commit_sha1, self.new.commit_sha1,)],
+            yield from read_git_lines(
+                (
+                    ['diff-tree']
+                    + self.diffopts
+                    + [f'{self.old.commit_sha1}..{self.new.commit_sha1}']
+                ),
                 keepends=True,
-                ):
-                yield line
+            )
 
-        elif self.old.commit_sha1 and not self.new.commit_sha1:
+        elif self.old.commit_sha1:
             # A reference was deleted.  List the revisions that were
             # removed from the repository by this reference change.
 
             sha1s = list(push.get_discarded_commits(self))
             tot = len(sha1s)
-            discarded_revisions = [
-                Revision(self, GitObject(sha1), num=i+1, tot=tot)
+            if discarded_revisions := [
+                Revision(self, GitObject(sha1), num=i + 1, tot=tot)
                 for (i, sha1) in enumerate(sha1s)
-                ]
-
-            if discarded_revisions:
-                for line in self.expand_lines(DISCARDED_REVISIONS_TEMPLATE):
-                    yield line
+            ]:
+                yield from self.expand_lines(DISCARDED_REVISIONS_TEMPLATE)
                 yield '\n'
                 for r in discarded_revisions:
                     (sha1, subject) = r.rev.get_summary()
@@ -1117,12 +1066,9 @@ class ReferenceChange(Change):
                         BRIEF_SUMMARY_TEMPLATE, action='discards', text=subject,
                         )
             else:
-                for line in self.expand_lines(NO_DISCARDED_REVISIONS_TEMPLATE):
-                    yield line
-
-        elif not self.old.commit_sha1 and not self.new.commit_sha1:
-            for line in self.expand_lines(NON_COMMIT_UPDATE_TEMPLATE):
-                yield line
+                yield from self.expand_lines(NO_DISCARDED_REVISIONS_TEMPLATE)
+        else:
+            yield from self.expand_lines(NON_COMMIT_UPDATE_TEMPLATE)
 
     def generate_create_summary(self, push):
         """Called for the creation of a reference."""
@@ -1188,19 +1134,23 @@ class AnnotatedTagChange(ReferenceChange):
         # Use git for-each-ref to pull out the individual fields from
         # the tag
         [tagobject, tagtype, tagger, tagged] = read_git_lines(
-            ['for-each-ref', '--format=%s' % (self.ANNOTATED_TAG_FORMAT,), self.refname],
-            )
+            ['for-each-ref', f'--format={self.ANNOTATED_TAG_FORMAT}', self.refname]
+        )
+
 
         yield self.expand(
-            BRIEF_SUMMARY_TEMPLATE, action='tagging',
-            rev_short=tagobject, text='(%s)' % (tagtype,),
-            )
+            BRIEF_SUMMARY_TEMPLATE,
+            action='tagging',
+            rev_short=tagobject,
+            text=f'({tagtype})',
+        )
+
         if tagtype == 'commit':
             # If the tagged object is a commit, then we assume this is a
             # release, and so we calculate which tag this tag is
             # replacing
             try:
-                prevtag = read_git_output(['describe', '--abbrev=0', '%s^' % (self.new,)])
+                prevtag = read_git_output(['describe', '--abbrev=0', f'{self.new}^'])
             except CommandError:
                 prevtag = None
             if prevtag:
@@ -1220,9 +1170,7 @@ class AnnotatedTagChange(ReferenceChange):
         contents = contents[contents.index('\n') + 1:]
         if contents and contents[-1][-1:] != '\n':
             contents.append('\n')
-        for line in contents:
-            yield line
-
+        yield from contents
         if self.show_shortlog and tagtype == 'commit':
             # Only commit tags make sense to have rev-list operations
             # performed on them
@@ -1230,48 +1178,39 @@ class AnnotatedTagChange(ReferenceChange):
             if prevtag:
                 # Show changes since the previous release
                 revlist = read_git_output(
-                    ['rev-list', '--pretty=short', '%s..%s' % (prevtag, self.new,)],
+                    ['rev-list', '--pretty=short', f'{prevtag}..{self.new}'],
                     keepends=True,
-                    )
+                )
+
             else:
                 # No previous tag, show all the changes since time
                 # began
                 revlist = read_git_output(
-                    ['rev-list', '--pretty=short', '%s' % (self.new,)],
-                    keepends=True,
-                    )
-            for line in read_git_lines(['shortlog'], input=revlist, keepends=True):
-                yield line
+                    ['rev-list', '--pretty=short', f'{self.new}'], keepends=True
+                )
 
+            yield from read_git_lines(['shortlog'], input=revlist, keepends=True)
         yield LOGEND
         yield '\n'
 
     def generate_create_summary(self, push):
         """Called for the creation of an annotated tag."""
 
-        for line in self.expand_lines(TAG_CREATED_TEMPLATE):
-            yield line
-
-        for line in self.describe_tag(push):
-            yield line
+        yield from self.expand_lines(TAG_CREATED_TEMPLATE)
+        yield from self.describe_tag(push)
 
     def generate_update_summary(self, push):
         """Called for the update of an annotated tag.
 
         This is probably a rare event and may not even be allowed."""
 
-        for line in self.expand_lines(TAG_UPDATED_TEMPLATE):
-            yield line
-
-        for line in self.describe_tag(push):
-            yield line
+        yield from self.expand_lines(TAG_UPDATED_TEMPLATE)
+        yield from self.describe_tag(push)
 
     def generate_delete_summary(self, push):
         """Called when a non-annotated reference is updated."""
 
-        for line in self.expand_lines(TAG_DELETED_TEMPLATE):
-            yield line
-
+        yield from self.expand_lines(TAG_DELETED_TEMPLATE)
         yield self.expand('   tag was  %(oldrev_short)s\n')
         yield '\n'
 
@@ -1290,23 +1229,18 @@ class NonAnnotatedTagChange(ReferenceChange):
     def generate_create_summary(self, push):
         """Called for the creation of an annotated tag."""
 
-        for line in self.expand_lines(TAG_CREATED_TEMPLATE):
-            yield line
+        yield from self.expand_lines(TAG_CREATED_TEMPLATE)
 
     def generate_update_summary(self, push):
         """Called when a non-annotated reference is updated."""
 
-        for line in self.expand_lines(TAG_UPDATED_TEMPLATE):
-            yield line
+        yield from self.expand_lines(TAG_UPDATED_TEMPLATE)
 
     def generate_delete_summary(self, push):
         """Called when a non-annotated reference is updated."""
 
-        for line in self.expand_lines(TAG_DELETED_TEMPLATE):
-            yield line
-
-        for line in ReferenceChange.generate_delete_summary(self, push):
-            yield line
+        yield from self.expand_lines(TAG_DELETED_TEMPLATE)
+        yield from ReferenceChange.generate_delete_summary(self, push)
 
 
 class OtherReferenceChange(ReferenceChange):
@@ -1355,11 +1289,10 @@ class SendMailer(Mailer):
         for path in SendMailer.SENDMAIL_CANDIDATES:
             if os.access(path, os.X_OK):
                 return path
-        else:
-            raise ConfigurationException(
-                'No sendmail executable found.  '
-                'Try setting multimailhook.sendmailCommand.'
-                )
+        raise ConfigurationException(
+            'No sendmail executable found.  '
+            'Try setting multimailhook.sendmailCommand.'
+            )
 
     def __init__(self, command=None, envelopesender=None):
         """Construct a SendMailer instance.
@@ -1369,11 +1302,7 @@ class SendMailer(Mailer):
         provided, it will also be passed to the command, via '-f
         envelopesender'."""
 
-        if command:
-            self.command = command[:]
-        else:
-            self.command = [self.find_sendmail(), '-oi', '-t']
-
+        self.command = command[:] if command else [self.find_sendmail(), '-oi', '-t']
         if envelopesender:
             self.command.extend(['-f', envelopesender])
 
@@ -1602,8 +1531,7 @@ class Environment(object):
         """Use the last part of the repo path, with ".git" stripped off if present."""
 
         basename = os.path.basename(os.path.abspath(self.get_repo_path()))
-        m = self.REPO_NAME_RE.match(basename)
-        if m:
+        if m := self.REPO_NAME_RE.match(basename):
             return m.group('name')
         else:
             return basename
@@ -1644,7 +1572,7 @@ class Environment(object):
             values = {}
 
             for key in self.COMPUTED_KEYS:
-                value = getattr(self, 'get_%s' % (key,))()
+                value = getattr(self, f'get_{key}')()
                 if value is not None:
                     values[key] = value
 
@@ -1780,25 +1708,23 @@ class ConfigOptionsEnvironmentMixin(ConfigEnvironmentMixin):
     def get_emailprefix(self):
         emailprefix = self.config.get('emailprefix')
         if emailprefix and emailprefix.strip():
-            return emailprefix.strip() + ' '
+            return f'{emailprefix.strip()} '
         else:
-            return '[%s] ' % (self.get_repo_shortname(),)
+            return f'[{self.get_repo_shortname()}] '
 
     def get_sender(self):
         return self.config.get('envelopesender')
 
     def get_fromaddr(self):
-        fromaddr = self.config.get('from')
-        if fromaddr:
+        if fromaddr := self.config.get('from'):
             return fromaddr
-        else:
-            config = Config('user')
-            fromname = config.get('name', default='')
-            fromemail = config.get('email', default='')
-            if fromemail:
-                return formataddr([fromname, fromemail])
-            else:
-                return self.get_sender()
+        config = Config('user')
+        fromname = config.get('name', default='')
+        return (
+            formataddr([fromname, fromemail])
+            if (fromemail := config.get('email', default=''))
+            else self.get_sender()
+        )
 
     def get_reply_to_refchange(self, refchange):
         if self.__reply_to_refchange is None:
@@ -1961,7 +1887,7 @@ class PusherDomainEnvironmentMixin(ConfigEnvironmentMixin):
     def get_pusher_email(self):
         if self.__emaildomain:
             # Derive the pusher's full email address in the default way:
-            return '%s@%s' % (self.get_pusher(), self.__emaildomain)
+            return f'{self.get_pusher()}@{self.__emaildomain}'
         else:
             return super(PusherDomainEnvironmentMixin, self).get_pusher_email()
 
@@ -2037,8 +1963,7 @@ class ConfigRecipientsEnvironmentMixin(
             retval = config.get_recipients(name)
             if retval is not None:
                 return retval
-        else:
-            return ''
+        return ''
 
 
 class ProjectdescEnvironmentMixin(Environment):
@@ -2234,17 +2159,14 @@ class Push(object):
             )
 
     @classmethod
-    def _sort_key(klass, change):
-        return (klass.SORT_ORDER[change.__class__, change.change_type], change.refname,)
+    def _sort_key(cls, change):
+        return cls.SORT_ORDER[change.__class__, change.change_type], change.refname
 
     def _compute_other_ref_sha1s(self):
         """Return the GitObjects referred to by references unaffected by this push."""
 
         # The refnames being changed by this push:
-        updated_refs = set(
-            change.refname
-            for change in self.changes
-            )
+        updated_refs = {change.refname for change in self.changes}
 
         # The SHA-1s of commits referred to by all references in this
         # repository *except* updated_refs:
@@ -2253,7 +2175,7 @@ class Push(object):
             '%(objectname) %(objecttype) %(refname)\n'
             '%(*objectname) %(*objecttype) %(refname)'
             )
-        for line in read_git_lines(['for-each-ref', '--format=%s' % (fmt,)]):
+        for line in read_git_lines(['for-each-ref', f'--format={fmt}']):
             (sha1, type, name) = line.split(' ', 2)
             if sha1 and type == 'commit' and name not in updated_refs:
                 sha1s.add(sha1)
@@ -2447,11 +2369,7 @@ def choose_environment(config, osenv=None, env=None, recipients=None):
         env = config.get('environment')
 
     if not env:
-        if 'GL_USER' in osenv and 'GL_REPO' in osenv:
-            env = 'gitolite'
-        else:
-            env = 'generic'
-
+        env = 'gitolite' if 'GL_USER' in osenv and 'GL_REPO' in osenv else 'generic'
     environment_mixins.append(KNOWN_ENVIRONMENTS[env])
 
     if recipients:
